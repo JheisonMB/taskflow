@@ -4,8 +4,9 @@
 class User:
     """Represents a system user."""
 
-    def __init__(self, user_id: str, name: str, email: str):
-        self.user_id = user_id
+    def __init__(self, name: str, email: str, user_id: str = None):
+        import uuid
+        self.user_id = user_id if user_id else str(uuid.uuid4())
         self.name = name.strip()
         self.email = email.strip()
         self.assigned_tasks = []
@@ -34,6 +35,10 @@ class User:
 
     @classmethod
     def from_dict(cls, data: dict) -> "User":
-        user = cls(data["user_id"], data["name"], data["email"])
+        # data puede venir con user_id primero o después
+        if "user_id" in data:
+            user = cls(data["name"], data["email"], data["user_id"])
+        else:
+            user = cls(data["name"], data["email"])
         user.assigned_tasks = data.get("assigned_tasks", [])
         return user

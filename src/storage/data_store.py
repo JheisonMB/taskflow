@@ -1,179 +1,194 @@
 """Data persistence layer."""
 
-import json
-import pickle
+import sqlite3
 import os
 from datetime import datetime
 from typing import Optional
 
 from src.core import TaskManager
-from src.models import User, Task
-
+from src.models import User, Task, TaskStatus
 
 class DataStore:
-    """Manages data persistence."""
+    """Manages data persistence using SQLite."""
 
-    def __init__(self, data_dir: str = "data"):
-        self.data_dir = data_dir
-        self.json_file = os.path.join(data_dir, "tasks.json")
-        self.pickle_file = os.path.join(data_dir, "tasks.pkl")
-
+    def __init__(self, db_path: str = "data/tasks.db"):
+        self.db_path = db_path
+        data_dir = os.path.dirname(db_path)
         if not os.path.exists(data_dir):
             os.makedirs(data_dir)
+        self._init_db()
 
-    def save_json(self, manager: TaskManager) -> bool:
-        """Save to JSON format."""
-        try:
-            data = {
-                "exported_at": datetime.now().isoformat(),
-                "users": [u.to_dict() for u in manager.list_users()],
-                "tasks": [t.to_dict() for t in manager.list_tasks()],
-            }
-            with open(self.json_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            return True
-        except Exception:
-            return False
+    def _init_db(self):
+        """Create tables if they do not exist (migrations)."""
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            # Users table
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT NOT NULL
+                )
+            ''')
+            # Tasks table
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS tasks (
+                    task_id TEXT PRIMARY KEY,
+                    assignee TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    due_date TEXT NOT NULL,
+                    completed_at TEXT,
+                    FOREIGN KEY (assignee) REFERENCES users(user_id)
+                )
+            ''')
+            conn.commit()
 
-    def load_json(self, manager: TaskManager) -> bool:
-        """Load from JSON format."""
-        try:
-            if not os.path.exists(self.json_file):
-                return False
+    # --- User CRUD ---
+    def add_user(self, user: User) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute(
+                "INSERT INTO users (user_id, name, email) VALUES (?, ?, ?)",
+                (user.user_id, user.name, user.email)
+            )
+            conn.commit()
 
-            with open(self.json_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
+    def get_user(self, user_id: str) -> Optional[User]:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute("SELECT user_id, name, email FROM users WHERE user_id = ?", (user_id,))
+            row = c.fetchone()
+            if row:
+                return User(row[1], row[2], row[0])
+            return None
 
-            for user_data in data.get("users", []):
-                user = User.from_dict(user_data)
-                manager.users[user.user_id] = user
+    def list_users(self) -> list:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute("SELECT user_id, name, email FROM users")
+            return [User(name, email, user_id) for user_id, name, email in c.fetchall()]
 
-            for task_data in data.get("tasks", []):
-                task = Task.from_dict(task_data)
-                manager.tasks[task.task_id] = task
+    # --- Task CRUD ---
+    def add_task(self, task: Task) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute(
+                """
+                INSERT INTO tasks (task_id, assignee, title, description, status, created_at, due_date, completed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    task.task_id,
+                    task.assignee,
+                    task.title,
+                    task.description,
+                    task.status.value,
+                    task.created_at.isoformat(),
+                    task.due_date.isoformat(),
+                    task.completed_at.isoformat() if task.completed_at else None
+                )
+            )
+            conn.commit()
 
-                if task.task_id.startswith("TASK-"):
-                    try:
-                        num = int(task.task_id.split("-")[1])
-                        manager._task_counter = max(manager._task_counter, num)
-                    except ValueError:
-                        pass
+    def get_task(self, task_id: str) -> Optional[Task]:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,))
+            row = c.fetchone()
+            if row:
+                return self._row_to_task(row)
+            return None
 
-            return True
-        except Exception:
-            return False
+    def list_tasks(self) -> list:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute("SELECT * FROM tasks")
+            return [self._row_to_task(row) for row in c.fetchall()]
 
-    def save_pickle(self, manager: TaskManager) -> bool:
-        """Save to pickle format."""
-        try:
-            data = {
-                "exported_at": datetime.now(),
-                "users": {uid: u.to_dict() for uid, u in manager.users.items()},
-                "tasks": {tid: t.to_dict() for tid, t in manager.tasks.items()},
-                "task_counter": manager._task_counter,
-            }
-            with open(self.pickle_file, "wb") as f:
-                pickle.dump(data, f)
-            return True
-        except Exception:
-            return False
+    def update_task_status(self, task_id: str, status: TaskStatus) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            completed_at = datetime.now().isoformat() if status == TaskStatus.COMPLETED else None
+            c.execute(
+                "UPDATE tasks SET status = ?, completed_at = ? WHERE task_id = ?",
+                (status.value, completed_at, task_id)
+            )
+            conn.commit()
 
-    def load_pickle(self, manager: TaskManager) -> bool:
-        """Load from pickle format."""
-        try:
-            if not os.path.exists(self.pickle_file):
-                return False
+    def delete_task(self, task_id: str) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
+            conn.commit()
 
-            with open(self.pickle_file, "rb") as f:
-                data = pickle.load(f)
+    # --- Helpers ---
+    def _row_to_task(self, row) -> Task:
+        (
+            task_id, assignee, title, description, status, created_at,
+            due_date, completed_at
+        ) = row
+        t = Task(
+            assignee=assignee,
+            title=title,
+            description=description,
+            due_date=datetime.fromisoformat(due_date),
+            status=TaskStatus(status)
+        )
+        t.task_id = task_id
+        t.created_at = datetime.fromisoformat(created_at)
+        t.completed_at = datetime.fromisoformat(completed_at) if completed_at else None
+        return t
 
-            for user_data in data.get("users", {}).values():
-                user = User.from_dict(user_data)
-                manager.users[user.user_id] = user
-
-            for task_data in data.get("tasks", {}).values():
-                task = Task.from_dict(task_data)
-                manager.tasks[task.task_id] = task
-
-            manager._task_counter = data.get("task_counter", 0)
-            return True
-        except Exception:
-            return False
-
-    def export_csv(self, manager: TaskManager, filename: Optional[str] = None) -> bool:
-        """Export tasks to CSV."""
+    # --- Reports (archivos) ---
+    def export_csv(self, tasks: list, filename: Optional[str] = None) -> bool:
+        import csv
         try:
             if filename is None:
-                filename = os.path.join(self.data_dir, "tasks_export.csv")
-
-            with open(filename, "w", encoding="utf-8") as f:
-                f.write(
-                    "ID,Title,Description,Assignee,Status,Created,Due,Days Remaining\n"
-                )
-
-                for task in manager.list_tasks():
-                    line = (
-                        f'"{task.task_id}",'
-                        f'"{task.title}",'
-                        f'"{task.description}",'
-                        f'"{task.assignee}",'
-                        f'"{task.status.value}",'
-                        f'"{task.created_at.strftime("%Y-%m-%d %H:%M")}",'
-                        f'"{task.due_date.strftime("%Y-%m-%d %H:%M")}",'
-                        f'"{task.days_until_due()}"\n'
-                    )
-                    f.write(line)
-
+                filename = os.path.join(os.path.dirname(self.db_path), "tasks_export.csv")
+            with open(filename, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["task_id", "assignee", "title", "description", "status", "created_at", "due_date", "completed_at"])
+                for t in tasks:
+                    writer.writerow([
+                        t.task_id,
+                        t.assignee,
+                        t.title,
+                        t.description,
+                        t.status.value,
+                        t.created_at.isoformat(),
+                        t.due_date.isoformat(),
+                        t.completed_at.isoformat() if t.completed_at else ""
+                    ])
             return True
         except Exception:
             return False
 
-    def generate_report(
-        self, manager: TaskManager, filename: Optional[str] = None
-    ) -> bool:
-        """Generate text report."""
+    def generate_report(self, tasks: list, users: list, filename: Optional[str] = None) -> bool:
         try:
             if filename is None:
-                filename = os.path.join(
-                    self.data_dir,
-                    f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                )
-
+                filename = os.path.join(os.path.dirname(self.db_path), f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
             with open(filename, "w", encoding="utf-8") as f:
                 f.write("=" * 80 + "\n")
                 f.write("TASK MANAGEMENT SYSTEM REPORT\n")
                 f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                 f.write("=" * 80 + "\n\n")
-
-                stats = manager.get_stats()
-                f.write("SYSTEM STATISTICS\n")
-                f.write("-" * 80 + "\n")
-                for key, value in stats.items():
-                    if "rate" in key:
-                        f.write(f"{key}: {value:.1f}%\n")
-                    else:
-                        f.write(f"{key}: {value}\n")
-
-                f.write("\n" + "=" * 80 + "\n")
                 f.write("USERS\n")
                 f.write("=" * 80 + "\n")
-                for user in manager.iter_users():
-                    stats_u = manager.get_user_stats(user.user_id)
+                for user in users:
                     f.write(f"\n{user}\n")
-                    f.write(f"  Assigned tasks: {stats_u['total_tasks']}\n")
-                    f.write(f"  Completion rate: {stats_u['completion_rate']:.1f}%\n")
-
                 f.write("\n" + "=" * 80 + "\n")
                 f.write("TASKS\n")
                 f.write("=" * 80 + "\n")
-                for task in manager.iter_all_tasks():
+                for task in tasks:
                     f.write(f"\n{task.task_id}: {task.title}\n")
                     f.write(f"  Status: {task.status.value}\n")
                     f.write(f"  Assignee: {task.assignee}\n")
                     f.write(f"  Description: {task.description}\n")
                     f.write(f"  Due: {task.due_date.strftime('%Y-%m-%d %H:%M')}\n")
                     f.write(f"  Days remaining: {task.days_until_due()}\n")
-
             return True
         except Exception:
             return False

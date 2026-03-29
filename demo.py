@@ -56,20 +56,21 @@ def main():
     for task in completed:
         print(f"   - {task.title} (by {task.user_id})")
 
-    print("\n7. Persisting data...")
-    storage.save_users_json(manager.users, "users.json")
-    storage.save_tasks_pickle(manager.tasks, "tasks.pkl")
-    storage.save_tasks_csv(manager.tasks, "tasks.csv")
-    print("   Saved to: users.json, tasks.pkl, tasks.csv")
+    print("\n7. Persisting data in SQLite...")
+    for user in manager.list_users():
+        storage.add_user(user)
+    for task in manager.list_tasks():
+        storage.add_task(task)
+    print("   Saved users and tasks to SQLite database.")
 
     print("\n8. Generating text report...")
-    report = storage.generate_text_report(manager.users, manager.tasks)
-    print(report)
+    storage.generate_report(storage.list_tasks(), storage.list_users())
+    print("   Report generated in data/ directory.")
 
-    print("\n9. Loading data from storage...")
-    loaded_users = storage.load_users_json("users.json")
-    loaded_tasks = storage.load_tasks_pickle("tasks.pkl")
-    print(f"   Loaded {len(loaded_users)} users and {len(loaded_tasks)} tasks")
+    print("\n9. Loading data from SQLite...")
+    loaded_users = storage.list_users()
+    loaded_tasks = storage.list_tasks()
+    print(f"   Loaded {len(loaded_users)} users and {len(loaded_tasks)} tasks from SQLite")
 
     print("\n" + "=" * 60)
     print("Demo completed successfully!")

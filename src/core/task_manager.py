@@ -14,12 +14,10 @@ class TaskManager:
         self.tasks: dict[str, Task] = {}
         self._task_counter = 0
 
-    def add_user(self, user_id: str, name: str, email: str) -> User:
+    def add_user(self, name: str, email: str) -> User:
         """Add a new user."""
-        if user_id in self.users:
-            raise ValueError(f"User {user_id!r} already exists")
-        user = User(user_id, name, email)
-        self.users[user_id] = user
+        user = User(name, email)
+        self.users[user.user_id] = user
         return user
 
     def get_user(self, user_id: str) -> Optional[User]:
@@ -30,38 +28,57 @@ class TaskManager:
         """Get all users."""
         return list(self.users.values())
 
-    def create_task(
-        self, title: str, description: str, assignee: str, due_date: datetime
-    ) -> Task:
-        """Create a new task."""
+    def add_task(self, assignee: str, title: str, description: str, due_date=None) -> Task:
+        """Add a new task."""
         if assignee not in self.users:
             raise ValueError(f"User {assignee!r} not found")
-
-        self._task_counter += 1
-        task_id = f"TASK-{self._task_counter:04d}"
-        task = Task(task_id, title, description, assignee, due_date)
-        self.tasks[task_id] = task
-        self.users[assignee].add_task(task_id)
+        from datetime import datetime
+        due_date = due_date or datetime.now()
+        task = Task(assignee, title, description, due_date)
+        self.tasks[task.task_id] = task
+        self.users[assignee].add_task(task.task_id)
         return task
 
-    def get_task(self, task_id: str) -> Optional[Task]:
-        """Get task by ID."""
-        return self.tasks.get(task_id)
+    def get_task(self, user_id: str, task_id: str) -> Optional[Task]:
+        """Get task by ID for a user."""
+        task = self.tasks.get(task_id)
+        if task and task.assignee == user_id:
+            return task
+        return None
 
     def list_tasks(self) -> List[Task]:
         """Get all tasks."""
         return list(self.tasks.values())
 
-    def set_task_status(self, task_id: str, status: TaskStatus) -> bool:
+    def delete_task(self, user_id: str, task_id: str) -> bool:
+        """Delete a task if it belongs to the user."""
+        task = self.tasks.get(task_id)
+        if not task or task.assignee != user_id:
+            return False
+        del self.tasks[task_id]
+        self.users[user_id].remove_task(task_id)
+        return True
+
+    def update_task_status(self, user_id: str, task_id: str, status: TaskStatus) -> bool:
         """Update task status."""
         if task_id not in self.tasks:
+            return False
+        if self.tasks[task_id].assignee != user_id:
             return False
         self.tasks[task_id].set_status(status)
         return True
 
+    def filter_tasks_by_status(self, status: TaskStatus) -> list:
+        """Return all tasks with a given status."""
+        return [t for t in self.tasks.values() if t.status == status]
+
     def filter_by_status(self, status: TaskStatus) -> List[Task]:
         """Filter tasks by status."""
         return [t for t in self.tasks.values() if t.status == status]
+
+    def get_user_tasks(self, user_id: str) -> list:
+        """Return all tasks assigned to a user."""
+        return [t for t in self.tasks.values() if t.assignee == user_id]
 
     def filter_by_assignee(self, user_id: str) -> List[Task]:
         """Filter tasks by assignee."""

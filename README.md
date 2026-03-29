@@ -1,172 +1,162 @@
-# Task Management System
+# Sistema de Gestión de Tareas
 
-A professional Python task management system demonstrating Object-Oriented Programming, data persistence, and advanced Python concepts.
+Este es un proyecto académico hecho en Python para gestionar tareas y usuarios en una empresa de software.
 
-## Features
+## Diagramas de diseño
 
-- **User Management**: Create and manage users with unique identifiers
-- **Task Management**: Create tasks with status tracking (Pending, In Progress, Completed)
-- **Data Persistence**: Save and load data in multiple formats (JSON, Pickle, CSV)
-- **Task Filtering**: Filter tasks by status or user
-- **Text Reports**: Generate human-readable reports of all tasks and users
-- **Advanced Python**: Generators, iterators, and Pythonic patterns
+### Casos de Uso
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Usuario
+    participant S@{ "type": "boundary" } as Sistema
+    participant DB@{ "type" : "database" } as SQLite
 
-## Project Structure
+    U->>S: Crear tarea
+    S->>DB: Insertar tarea
+    DB-->>S: Confirmación
+    S-->>U: Tarea creada
 
 ```
-src/
-├── models/              # Data models (User, Task)
-│   ├── user.py         # User class definition
-│   ├── task.py         # Task class and TaskStatus enum
-│   └── __init__.py     # Package exports
-├── core/               # Core business logic
-│   ├── task_manager.py # TaskManager class for operations
-│   └── __init__.py     # Package exports
-└── storage/            # Data persistence layer
-    ├── data_store.py   # DataStore class for I/O operations
-    └── __init__.py     # Package exports
 
-demo.py                 # Basic feature demonstration
-advanced_example.py     # Advanced concepts showcase
-test_system.py          # Unit tests
-requirements.txt        # Project dependencies
-.gitignore             # Git ignore patterns
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Usuario
+    participant S@{ "type": "boundary" } as Sistema
+    participant DB@{ "type" : "database" } as SQLite
+
+    U->>S: Consultar tareas
+    S->>DB: Leer tareas
+    DB-->>S: Lista de tareas
+    S-->>U: Mostrar tareas
 ```
 
-## Installation
+---
 
-1. Create a virtual environment:
+
+### Entidades
+
+```mermaid
+erDiagram
+    USUARIO {
+        int id PK
+        string nombre
+        string email
+    }
+    TAREA {
+        int id PK
+        string titulo
+        string descripcion
+        date fecha_creacion
+        date fecha_limite
+        string estado
+        int usuario_id FK
+     }
+    USUARIO ||--o{ TAREA : asigna
+```
+
+---
+
+
+### Solución
+```mermaid
+classDiagram
+    class User {
+        +str user_id
+        +str name
+        +str email
+        +list assigned_tasks
+        +add_task(task_id)
+        +remove_task(task_id)
+        +get_tasks()
+        +to_dict()
+        +from_dict(data)
+    }
+    class Task {
+        +str task_id
+        +str user_id
+        +str title
+        +str description
+        +str assignee
+        +datetime created_at
+        +datetime due_date
+        +TaskStatus status
+        +datetime completed_at
+        +set_status(status)
+        +reassign(new_assignee)
+        +days_until_due()
+        +is_overdue()
+        +to_dict()
+        +from_dict(data)
+    }
+    class TaskStatus {
+        <<enumeration>>
+        PENDING
+        IN_PROGRESS
+        COMPLETED
+    }
+    class TaskManager {
+        +dict users
+        +dict tasks
+        +add_user(name, email)
+        +get_user(user_id)
+        +list_users()
+        +add_task(assignee, title, description, due_date)
+        +get_task(user_id, task_id)
+        +list_tasks()
+        +delete_task(user_id, task_id)
+        +update_task_status(user_id, task_id, status)
+        +filter_tasks_by_status(status)
+        +get_user_tasks(user_id)
+        +filter_by_assignee(user_id)
+        +get_overdue_tasks()
+        +get_upcoming_tasks(days)
+        +iter_user_tasks(user_id)
+        +iter_all_tasks()
+        +iter_users()
+        +get_stats()
+        +get_user_stats(user_id)
+    }
+    User "1" -- "0..*" Task : asigna
+    TaskManager o-- User
+    TaskManager o-- Task
+    Task o-- TaskStatus
+```
+
+## ¿Cómo lo uso?
+
+1. **Crea un entorno virtual (recomendado):**
+
 ```bash
 python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
 ```
 
-2. Install dependencies:
+2. **Instala las dependencias:**
+
 ```bash
 pip install -r requirements.txt
 ```
 
-## Usage
+3. **Ejecuta la demo básica:**
 
-### Basic Demo
-
-Run the basic demonstration:
 ```bash
-python demo.py
+python3 demo.py
 ```
 
-### Advanced Examples
+Esto crea usuarios, tareas, actualiza estados y guarda los datos.
 
-See generators, iterators, and advanced Python concepts:
+4. **Ejecuta el ejemplo avanzado:**
+
 ```bash
-python advanced_example.py
+python3 advanced_example.py
 ```
 
-### Run Tests
+Aquí verás generadores, iteradores y más cosas de Python.
 
-Execute all unit tests:
+5. **Corre las pruebas (recomendado):**
+
 ```bash
-python -m unittest test_system.py -v
+pytest
 ```
-
-Or run a specific test class:
-```bash
-python -m unittest test_system.py.TestTask -v
-```
-
-## API Overview
-
-### TaskManager
-
-```python
-manager = TaskManager()
-
-# User operations
-user = manager.add_user("John Doe", "john@example.com")
-users = manager.users
-
-# Task operations
-task = manager.add_task(user.user_id, "Title", "Description")
-tasks = manager.get_user_tasks(user.user_id)
-manager.update_task_status(user.user_id, task.task_id, TaskStatus.COMPLETED)
-manager.delete_task(user.user_id, task.task_id)
-
-# Filtering
-completed_tasks = manager.filter_tasks_by_status(TaskStatus.COMPLETED)
-```
-
-### DataStore
-
-```python
-storage = DataStore()
-
-# Save operations
-storage.save_users_json(users, "users.json")
-storage.save_tasks_pickle(tasks, "tasks.pkl")
-storage.save_tasks_csv(tasks, "tasks.csv")
-
-# Load operations
-users = storage.load_users_json("users.json")
-tasks = storage.load_tasks_pickle("tasks.pkl")
-
-# Report generation
-report = storage.generate_text_report(users, tasks)
-```
-
-### Models
-
-```python
-from src.models import User, Task, TaskStatus
-
-# Create user
-user = User("Alice", "alice@example.com")
-
-# Create task
-task = Task(user.user_id, "Important Task", "Task description")
-task.status = TaskStatus.IN_PROGRESS
-
-# Access properties
-print(task.user_id, task.title, task.status.value)
-```
-
-## Key Concepts Demonstrated
-
-- **Object-Oriented Programming**: Classes, encapsulation, methods
-- **Data Persistence**: JSON, Pickle, and CSV formats
-- **Generators**: Efficient iteration over large datasets
-- **Custom Iterators**: Implementing `__iter__` and `__next__`
-- **String Methods**: Manipulation and formatting
-- **List Operations**: Comprehensions, filtering, sorting
-- **Datetime**: Creating and comparing timestamps
-- **Unit Testing**: Test organization with unittest framework
-- **Package Structure**: Modular organization with `__init__.py`
-
-## Testing
-
-The project includes 11+ comprehensive unit tests covering:
-
-- User creation and serialization
-- Task creation and status updates
-- TaskManager CRUD operations
-- Task filtering by status
-- DataStore persistence operations
-- Report generation
-
-All tests pass successfully:
-```bash
-python -m unittest test_system.py -v
-```
-
-## Dependencies
-
-- Python 3.7+
-- No external dependencies required for core functionality
-- Optional: tabulate and colorama for enhanced output
-
-## License
-
-This project is created for academic purposes.
-
-## Author
-
-Jheison Martinez Bolivar

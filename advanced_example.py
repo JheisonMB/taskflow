@@ -9,28 +9,44 @@ import json
 
 def task_generator(tasks):
     """Generator that yields tasks one at a time."""
-    for task in tasks:
-        yield task
+    # Si tasks es un dict, iterar sobre los valores
+    if isinstance(tasks, dict):
+        for task in tasks.values():
+            yield task
+    else:
+        for task in tasks:
+            yield task
 
 
 def pending_task_generator(tasks):
     """Generator that filters and yields only pending tasks."""
-    for task in tasks:
+    if isinstance(tasks, dict):
+        values = tasks.values()
+    else:
+        values = tasks
+    for task in values:
         if task.status == TaskStatus.PENDING:
             yield task
 
 
 def task_batch_generator(tasks, batch_size=2):
     """Generator that yields tasks in batches."""
-    for i in range(0, len(tasks), batch_size):
-        yield tasks[i : i + batch_size]
+    if isinstance(tasks, dict):
+        values = list(tasks.values())
+    else:
+        values = list(tasks)
+    for i in range(0, len(values), batch_size):
+        yield values[i : i + batch_size]
 
 
 class TaskIterator:
     """Custom iterator for traversing tasks."""
 
     def __init__(self, tasks):
-        self.tasks = tasks
+        if isinstance(tasks, dict):
+            self.tasks = list(tasks.values())
+        else:
+            self.tasks = list(tasks)
         self.index = 0
 
     def __iter__(self):
@@ -61,12 +77,14 @@ def demonstrate_generators():
     for i in range(6, 9):
         manager.add_task(user2.user_id, f"Task {i}", f"Description for task {i}")
 
+    first_task_id = next(iter(manager.tasks))
     manager.update_task_status(
-        user1.user_id, manager.tasks[0].task_id, TaskStatus.COMPLETED
+        user1.user_id, first_task_id, TaskStatus.COMPLETED
     )
-    manager.update_task_status(
-        user1.user_id, manager.tasks[1].task_id, TaskStatus.IN_PROGRESS
-    )
+    # Actualiza el estado de la segunda tarea de user1 (si existe)
+    user1_tasks = [t for t in manager.tasks.values() if t.user_id == user1.user_id]
+    if len(user1_tasks) > 1:
+        manager.update_task_status(user1.user_id, user1_tasks[1].task_id, TaskStatus.IN_PROGRESS)
 
     print(
         f"   Created {len(manager.users)} users with {len(manager.tasks)} total tasks"
@@ -109,13 +127,13 @@ def demonstrate_generators():
 
     print("\n6. Using list comprehension (Pythonic approach)...")
     print("   Extracting task titles and statuses:")
-    task_info = [(t.title, t.status.value) for t in manager.tasks[:4]]
+    task_info = [(t.title, t.status.value) for t in list(manager.tasks.values())[:4]]
     for title, status in task_info:
         print(f"   - {title}: {status}")
 
     print("\n7. Demonstrating string methods...")
     print("   Task title transformations:")
-    task = manager.tasks[0]
+    task = list(manager.tasks.values())[0]
     print(f"   Original: '{task.title}'")
     print(f"   Upper: '{task.title.upper()}'")
     print(f"   Title case: '{task.title.title()}'")
@@ -124,7 +142,7 @@ def demonstrate_generators():
 
     print("\n8. Demonstrating list operations...")
     print("   Task list manipulations:")
-    titles = [t.title for t in manager.tasks]
+    titles = [t.title for t in list(manager.tasks.values())]
     print(
         f"   Count of 'Task': {titles.count('Task 1' if 'Task 1' in titles else 'Task 5')}"
     )
@@ -134,16 +152,19 @@ def demonstrate_generators():
     print("\n9. Demonstrating datetime operations...")
     print("   Task creation and timing:")
     now = datetime.now()
-    for i, task in enumerate(manager.tasks[:3]):
+    for i, task in enumerate(list(manager.tasks.values())[:3]):
         created = task.created_at
         elapsed = now - created
         print(f"   {task.title}: created {elapsed.total_seconds():.0f}s ago")
 
     print("\n10. Demonstrating file operations with JSON...")
     storage = DataStore()
-    storage.save_tasks_pickle(manager.tasks, "advanced_demo_tasks.pkl")
-    loaded_tasks = storage.load_tasks_pickle("advanced_demo_tasks.pkl")
-    print(f"    Saved and loaded {len(loaded_tasks)} tasks successfully")
+    for user in manager.list_users():
+        storage.add_user(user)
+    for task in manager.list_tasks():
+        storage.add_task(task)
+    loaded_tasks = storage.list_tasks()
+    print(f"    Saved and loaded {len(loaded_tasks)} tasks successfully from SQLite")
 
     print("\n" + "=" * 60)
     print("Advanced concepts demonstration completed!")
